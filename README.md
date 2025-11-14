@@ -9,7 +9,7 @@ This is the Pytorch implementation for our paper: Corrective Aggregation and Pre
 The structure of our model is available for viewing in the following:
 
 <p align="center">
-   <img src="CoPARec.png" width="900">
+   <img src="CoPARec.pdf" width="900">
 </p>
 
 
