@@ -71,7 +71,7 @@ class CoPARec(GeneralRecommender):
         self.n_nodes = self.n_users + self.n_items
         interaction_matrix = dataset.inter_matrix(form='coo').astype(np.float32)
         self.interaction_matrix = interaction_matrix
-        self.jaccard_similarity = self.precompute_jaccard_similarity()
+        self.a_similarity = self.precompute_a_similarity()
         self.ui_indices = torch.LongTensor(np.vstack((interaction_matrix.row, interaction_matrix.col))).to(self.device)
         items_in_interactions = self.ui_indices[1]
         item_degrees = torch.bincount(items_in_interactions, minlength=self.n_items).float()
@@ -95,21 +95,11 @@ class CoPARec(GeneralRecommender):
         self.u_edge_predictor = MLP_view(self.base_uu, self.embedding_dim, self.device)
         self.v_mu = MLP(self.v_feat.size(-1), self.embedding_dim)
         self.t_mu = MLP(self.t_feat.size(-1), self.embedding_dim)
-    def precompute_jaccard_similarity(self):
-        cache_file = os.path.join(self.intermediate_path, "jaccard_similarity.pt")
+    def precompute_a_similarity(self):
+        cache_file = os.path.join(self.intermediate_path, "a_similarity.pt")
         if os.path.exists(cache_file):
             return torch.load(cache_file)
-        interaction_dense = self.interaction_matrix.toarray()
-        interaction_tensor = torch.tensor(interaction_dense, dtype=torch.float32, device=self.device)
-        cooccurrence = torch.mm(interaction_tensor.T, interaction_tensor)
-        item_degrees = interaction_tensor.sum(dim=0)
-        item_degrees[item_degrees == 0] = 0.00001
-        denominator = item_degrees.unsqueeze(1) + item_degrees.unsqueeze(0) - cooccurrence
-        denominator[denominator == 0] = 1e-8
-        jaccard_similarity = cooccurrence / denominator
-        jaccard_similarity.fill_diagonal_(0)
-        torch.save(jaccard_similarity, cache_file)
-        return jaccard_similarity
+        return a_similarity
 
     def cal_user_embedding_mean(self, embeddings):
         rows = self.ui_indices[0]
@@ -152,8 +142,8 @@ class CoPARec(GeneralRecommender):
     def get_knn_adj(self, embeddings):
         context_norm = embeddings / torch.norm(embeddings, p=2, dim=-1, keepdim=True)
         sim = torch.mm(context_norm, context_norm.transpose(1, 0))
-        if sim.size() == self.jaccard_similarity.size():
-            combined_sim = (sim + self.jaccard_similarity) / 2
+        if sim.size() == self.a_similarity.size():
+            combined_sim = (sim + self.a_similarity) / 2
         else:
             combined_sim = sim
         knn_val, knn_ind = torch.topk(combined_sim, self.knn_k, dim=-1)
